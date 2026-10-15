@@ -47,6 +47,9 @@
 
   const STORAGE_BEST = "doras_best_score";
   const STORAGE_MUTE = "doras_muted";
+  const STORAGE_NAME = "doras_player_name";
+  // Dirección de la API de puntajes. Vacío = mismo sitio que el juego (Worker de Cloudflare).
+  const API_BASE = (window.DORAS_API || "").replace(/\/$/, "");
 
   // ---------- Textos satíricos ----------
   const phrasesGeneral = [
@@ -390,6 +393,32 @@
   function readStorage(k) { try { return window.localStorage.getItem(k); } catch (e) { return null; } }
   function writeStorage(k, v) { try { window.localStorage.setItem(k, v); } catch (e) { /* sin almacenamiento */ } }
 
+  // ---------- Ranking compartido (Top 3) ----------
+  const board = { available: false, loaded: false, top: [], names: [], total: 0 };
+
+  async function loadBoard() {
+    if (location.protocol === "file:" && !API_BASE) return;
+    try {
+      const res = await fetch(API_BASE + "/api/top", { cache: "no-store" });
+      if (!res.ok) throw new Error(res.status);
+      const data = await res.json();
+      if (!Array.isArray(data.top)) throw new Error("formato");
+      Object.assign(board, { available: true, top: data.top, names: data.names || [], total: data.total || 0 });
+    } catch (e) {
+      board.available = false;
+    }
+    board.loaded = true;
+  }
+
+  function rankMessage(r) {
+    if (!r.improved) {
+      return "Tu mejor marca sigue siendo " + r.best + " (puesto #" + r.rank + "). Esta no cuenta, pero sudaste igual.";
+    }
+    if (r.rank === 1) return "¡Sos #1 del mundo! Mapa ya está imprimiendo el póster.";
+    if (r.rank <= 3) return "¡Entraste al podio: puesto #" + r.rank + "! Botas te aplaude con las patas.";
+    return "Quedaste #" + r.rank + " de " + r.total + ". Te faltan " + r.toPodium + " puntos para el podio (o una ensalada).";
+  }
+
   // ---------- Estado ----------
   const rand = (a, b) => a + Math.random() * (b - a);
   const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
@@ -451,6 +480,8 @@
       pendingFit: false,
       truck: { active: false, charging: false, lane: 1, y: 0, speed: 0, warn: 0, next: TRUCK_INITIAL_DELAY },
       flash: 0,
+      submitted: false,
+      saveMsg: "",
       boss: { active: false, done: false, timer: 0, x: W / 2, throwTimer: 1.2, warnLane: -1, warnTimer: 0, hurt: 0 },
       ending: false,
       endingTimer: 0,
@@ -933,10 +964,13 @@
     }
     audio.stopMusic();
     audio.fanfare();
+    loadBoard();
   }
 
   function continueEndless() {
     g.endless = true;
+    g.submitted = false;
+    g.saveMsg = "";
     player.invul = 1.5;
     g.obstacleTimer = 1.2;
     state.screen = "playing";
@@ -956,6 +990,7 @@
     }
     audio.stopMusic();
     audio.over();
+    loadBoard();
   }
 
   function pause() {
@@ -1503,6 +1538,29 @@
     if (doraReady) ctx.drawImage(doraImg, mx - 13, y - 19, 26, 36);
   }
 
+  function drawTop3(x, y, w, bg, ink, accent) {
+    const h = 128;
+    rr(x, y, w, h, 16);
+    ctx.fillStyle = bg;
+    ctx.fill();
+    text("🏆 Top 3 de todos los jugadores", x + w / 2, y + 20, 17, accent);
+    const medals = ["🥇", "🥈", "🥉"];
+    if (!board.top.length) {
+      text("Nadie todavía. ¡El podio te espera!", x + w / 2, y + 70, 17, ink, "center", "normal");
+      return;
+    }
+    board.top.slice(0, 3).forEach((p, i) => {
+      const ry = y + 50 + i * 28;
+      drawEmoji(medals[i], x + 26, ry, 22);
+      ctx.font = "bold 18px 'Trebuchet MS',sans-serif";
+      let name = p.name;
+      while (ctx.measureText(name).width > w - 170 && name.length > 3) name = name.slice(0, -1);
+      if (name !== p.name) name += "…";
+      text(name + (p.won ? " 🥗" : ""), x + 48, ry + 1, 18, ink, "left");
+      text(String(p.score), x + w - 18, ry + 1, 18, accent, "right");
+    });
+  }
+
   // ---------- Pantallas ----------
   function overlay(alpha = 0.6) {
     ctx.fillStyle = "rgba(20,12,35," + alpha + ")";
@@ -1532,20 +1590,24 @@
     text("Operación: Ni un Combo Más", W / 2, 208, 22, "#fff8e7", "center", "bold", "rgba(30,20,50,.8)");
     // Personaje
     const bob = Math.sin(time * 3) * 8;
-    const h = 380;
+    const h = 360;
     const w = h * (354 / 490);
-    if (doraReady) ctx.drawImage(doraImg, W / 2 - w / 2, 240 + bob, w, h);
+    if (doraReady) ctx.drawImage(doraImg, W / 2 - w / 2, 236 + bob, w, h);
     // Comida que lo persigue
     const foods = ["🍔", "🍕", "🍩", "🍟", "🥤", "🌭"];
     foods.forEach((f, i) => {
       const a = time * 0.9 + (i / foods.length) * Math.PI * 2;
       drawEmoji(f, W / 2 + Math.cos(a) * 225, 430 + Math.sin(a) * 175, 44);
     });
-    rr(70, 650, 400, 76, 16);
-    ctx.fillStyle = "rgba(25,20,40,.7)";
-    ctx.fill();
-    text("¡Esquivá la comida engordadora!", W / 2, 676, 20, "#fff");
-    text("Récord: " + state.best, W / 2, 704, 18, "#ffd43b");
+    if (board.available) {
+      drawTop3(70, 618, 400, "rgba(25,20,40,.78)", "#fff", "#ffd43b");
+    } else {
+      rr(70, 650, 400, 76, 16);
+      ctx.fillStyle = "rgba(25,20,40,.7)";
+      ctx.fill();
+      text("¡Esquivá la comida engordadora!", W / 2, 676, 20, "#fff");
+      text("Récord: " + state.best, W / 2, 704, 18, "#ffd43b");
+    }
     drawButton(buttons.play, true, 32);
     drawButton(buttons.how, false, 22);
     text("Sátira ficticia. Comé rico, pero tomá agua.", W / 2, 934, 14, "rgba(255,248,231,.8)", "center", "normal");
@@ -1595,28 +1657,31 @@
   function drawGameOver(time) {
     overlay(0.65);
     panel(40, 90, 460, 630);
-    text("¡Se llenó la barriga!", W / 2, 140, 32, "#c92a2a");
+    text("¡Se llenó la barriga!", W / 2, 130, 32, "#c92a2a");
     // Personaje ancho y triste
-    const h = 200;
+    const h = 140;
     const w = h * (354 / 490) * 1.55;
     if (doraReady) {
       ctx.save();
-      ctx.translate(W / 2, 270);
+      ctx.translate(W / 2, 222);
       ctx.rotate(Math.sin(time * 2) * 0.05);
       ctx.drawImage(doraImg, -w / 2, -h / 2, w, h);
       ctx.restore();
     }
-    drawEmoji("🍔", W / 2 - 150, 300, 44);
-    drawEmoji("🍩", W / 2 + 150, 240, 44);
-    let y = 400;
-    y += wrappedText(state.defeat, W / 2, y, 400, 21, "#2b2140");
-    y += 14;
-    text("Puntaje: " + g.score, W / 2, y + 10, 34, "#5b2a00");
-    text("Récord: " + state.best, W / 2, y + 50, 20, "#7048a8");
-    if (state.newRecord) {
-      text("¡NUEVO RÉCORD!", W / 2, y + 84, 22, "#2b8a3e");
+    drawEmoji("🍔", W / 2 - 150, 240, 40);
+    drawEmoji("🍩", W / 2 + 150, 200, 40);
+    let y = 316;
+    y += wrappedText(state.defeat, W / 2, y, 400, 19, "#2b2140", 23);
+    text("Puntaje: " + g.score, W / 2, y + 16, 32, "#5b2a00");
+    text("Tu récord: " + state.best + (state.newRecord ? "  · ¡NUEVO!" : ""), W / 2, y + 50, 18,
+      state.newRecord ? "#2b8a3e" : "#7048a8");
+    if (board.available) {
+      const topY = Math.max(420, y + 70);
+      drawTop3(70, topY, 400, "#f3eaff", "#2b2140", "#7048a8");
+      state.formY = topY + 138;
+      if (g.saveMsg) wrappedText(g.saveMsg, W / 2, state.formY + 14, 400, 16, "#2b8a3e", 20);
     }
-    wrappedText(state.tagline, W / 2, 668, 400, 16, "#5c5470", 20, "normal");
+    wrappedText(state.tagline, W / 2, board.available ? 688 : 600, 400, 15, "#5c5470", 19, "normal");
     drawButton(buttons.retry, true, 26);
     drawButton(buttons.overMenu, false, 22);
   }
@@ -1681,12 +1746,14 @@
       y += h + 8;
     });
     if (el > 4.5) {
-      y = Math.max(y, 600) + 6;
+      y = Math.max(y, 560) + 6;
+      state.vicFormY = y + 104;
       text("Título oficial: " + state.rank, W / 2, y, 17, "#7048a8");
       text("Puntaje: " + g.score, W / 2, y + 34, 30, "#5b2a00");
       text("(incluye +" + VICTORY_BONUS + " puntos de vida saludable, no canjeables)", W / 2, y + 62, 13, "#5c5470", "center", "normal");
       if (state.newRecord) text("¡NUEVO RÉCORD!", W / 2, y + 86, 18, "#2b8a3e");
-      text(state.closer, W / 2, 768, 14, "#4b2a7a", "center", "normal");
+      if (g.saveMsg) wrappedText(g.saveMsg, W / 2, state.vicFormY + 12, 420, 15, "#2b8a3e", 19);
+      if (!scoreFormVisible()) text(state.closer, W / 2, 768, 14, "#4b2a7a", "center", "normal");
       drawButton(buttons.vicEndless, true, 21);
       drawButton(buttons.vicMenu, false, 20);
     }
@@ -1717,6 +1784,7 @@
     if (state.screen === "paused") drawPause();
     if (state.screen === "gameover") drawGameOver(time);
     if (state.screen === "victory") drawVictory(time);
+    layoutScoreForm();
   }
 
   let last = performance.now();
@@ -1729,6 +1797,113 @@
     render(time);
     requestAnimationFrame(frame);
   }
+
+  // ---------- Formulario del ranking ----------
+  const form = document.getElementById("scoreForm");
+  const nameInput = document.getElementById("nameInput");
+  const saveBtn = document.getElementById("saveBtn");
+  const sugsBox = document.getElementById("sugs");
+  const saveErr = document.getElementById("saveErr");
+  nameInput.value = readStorage(STORAGE_NAME) || "";
+  let formBoxKey = "";
+  let saving = false;
+
+  function scoreFormVisible() {
+    if (!board.available || g.submitted || !(g.score > 0)) return false;
+    if (state.screen === "gameover") return true;
+    return state.screen === "victory" && victoryRevealed();
+  }
+
+  function layoutScoreForm() {
+    const show = scoreFormVisible();
+    if (!show) {
+      if (form.classList.contains("show")) {
+        form.classList.remove("show");
+        nameInput.blur();
+        formBoxKey = "";
+      }
+      return;
+    }
+    const box = state.screen === "victory" ? { x: 60, y: state.vicFormY || 680, w: 420 } : { x: 70, y: state.formY || 560, w: 400 };
+    const r = canvas.getBoundingClientRect();
+    const k = r.width / W;
+    const key = [r.left, r.top, k, box.y].join("|");
+    if (key !== formBoxKey) {
+      formBoxKey = key;
+      form.style.left = r.left + box.x * k + "px";
+      form.style.top = r.top + box.y * k + "px";
+      form.style.width = box.w * k + "px";
+      form.style.fontSize = Math.max(13, 18 * k) + "px";
+    }
+    if (!form.classList.contains("show")) {
+      form.classList.add("show");
+      saveErr.textContent = "";
+      renderSuggestions();
+    }
+  }
+
+  function renderSuggestions() {
+    const q = nameInput.value.trim().toLocaleLowerCase("es");
+    const matches = board.names
+      .filter((n) => {
+        const low = n.toLocaleLowerCase("es");
+        return low !== q && (!q || low.includes(q));
+      })
+      .sort((a, b) => {
+        const sa = a.toLocaleLowerCase("es").startsWith(q) ? 0 : 1;
+        const sb = b.toLocaleLowerCase("es").startsWith(q) ? 0 : 1;
+        return sa - sb;
+      })
+      .slice(0, 4);
+    sugsBox.replaceChildren(...matches.map((n) => {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = n;
+      b.addEventListener("click", () => {
+        nameInput.value = n;
+        renderSuggestions();
+        nameInput.focus();
+      });
+      return b;
+    }));
+  }
+
+  nameInput.addEventListener("input", () => { saveErr.textContent = ""; renderSuggestions(); });
+  nameInput.addEventListener("focus", renderSuggestions);
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (saving) return;
+    const name = nameInput.value.replace(/\s+/g, " ").trim().slice(0, 16);
+    if (!name) {
+      saveErr.textContent = "Escribí un nombre (hasta Botas tiene uno).";
+      nameInput.focus();
+      return;
+    }
+    saving = true;
+    saveBtn.disabled = true;
+    saveBtn.textContent = "Guardando…";
+    try {
+      const res = await fetch(API_BASE + "/api/score", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name, score: g.score, seconds: Math.round(g.time), won: g.boss.done })
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se pudo guardar");
+      writeStorage(STORAGE_NAME, name);
+      Object.assign(board, { top: data.top || board.top, names: data.names || board.names, total: data.total || board.total });
+      g.submitted = true;
+      g.saveMsg = rankMessage(data);
+      nameInput.blur();
+    } catch (err) {
+      saveErr.textContent = "No se guardó: " + err.message + ". Probá de nuevo.";
+    } finally {
+      saving = false;
+      saveBtn.disabled = false;
+      saveBtn.textContent = "Guardar";
+    }
+  });
 
   const victoryRevealed = () => performance.now() / 1000 - (state.victoryStart || 0) > 4.5;
 
@@ -1794,6 +1969,7 @@
   canvas.addEventListener("contextmenu", (e) => e.preventDefault());
 
   window.addEventListener("keydown", (e) => {
+    if (e.target && e.target.tagName === "INPUT") return; // escribiendo el nombre
     const k = e.key;
     if (["ArrowLeft", "ArrowRight", "ArrowUp", "ArrowDown", " "].includes(k)) e.preventDefault();
     if (state.screen === "playing") {
@@ -1820,5 +1996,6 @@
 
   resize();
   resetGame();
+  loadBoard();
   requestAnimationFrame(frame);
 })();

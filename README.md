@@ -8,7 +8,10 @@ Doras y Botas recorren la selva esquivando la comida más engordadora. Cada golp
 
 ## Cómo jugarlo
 
-- Abrí `index.html` desde un servidor web (por ejemplo GitHub Pages).
+- El juego se publica en Cloudflare (ver "Publicar con Top 3 compartido"). Queda en
+  `https://doras-survivor.<tu-subdominio>.workers.dev`.
+- También funciona abriendo `public/index.html` desde cualquier servidor web, pero sin Top 3 compartido
+  (solo récord local).
 - Celular: deslizá a los lados para cambiar de carril, tocá o deslizá arriba para saltar. También hay botones ◀ Saltar ▶.
 - Computadora: flechas o A/D para moverse, Espacio/W/↑ para saltar, P o Esc para pausa, M para silenciar.
 
@@ -40,12 +43,36 @@ agrandado con una hoja de lechuga encima. Ahí recibís 3 premios ridículos al 
 "membresía VIP de un gimnasio que cierra mañana"), un título según cómo llegó tu Barriga-metro y
 +5000 "puntos de vida saludable, no canjeables". Después podés seguir en modo infinito.
 
+## Top 3 compartido
+
+- En el menú y al perder se ve el **Top 3 de todos los jugadores**.
+- Al terminar una partida (o al ganar) aparece una casilla para escribir tu nombre. Mientras escribís,
+  sugiere nombres de jugadores que ya existen (tocás uno y se completa). El juego recuerda tu último nombre.
+- Se guarda el **mejor puntaje de cada nombre**. Te dice tu puesto y cuántos puntos te faltan para el podio.
+- 🥗 junto a un nombre = esa persona llegó al final del Mapa.
+- Hay un freno básico contra puntajes inventados, pero no es a prueba de tramposos expertos.
+
+## Publicar con Top 3 compartido (una sola vez)
+
+1. En Cloudflare: **My Profile → API Tokens → Create Token → plantilla "Edit Cloudflare Workers"**.
+   Copiá el token.
+2. Copiá también tu **Account ID** (aparece en el panel de Workers, a la derecha).
+3. En GitHub, en este repo: **Settings → Secrets and variables → Actions → New repository secret**:
+   - `CLOUDFLARE_API_TOKEN` = el token
+   - `CLOUDFLARE_ACCOUNT_ID` = el Account ID
+4. En la pestaña **Actions**, abrí "Publicar juego en Cloudflare" y tocá **Run workflow**
+   (o hacé cualquier push). La primera vez crea solo el almacén de puntajes (`doras-scores`).
+5. Al final del registro del paso "Publicar" aparece la dirección del juego.
+
 ## Archivos
 
-- `index.html` — página.
-- `game.js` — todo el juego.
-- `assets/doras.webp` (y `doras.png`) — personaje sin fondo.
+- `public/index.html` — página.
+- `public/game.js` — todo el juego.
+- `public/assets/doras.webp` (y `doras.png`) — personaje sin fondo.
+- `worker/index.js` — servidor: entrega el juego y guarda/lee los puntajes.
+- `wrangler.toml` — configuración de Cloudflare.
+- `.github/workflows/deploy.yml` — publica automáticamente en Cloudflare.
 
-El récord se guarda solo en el navegador de cada persona.
+El récord personal también se guarda en el navegador de cada persona.
 
 Sátira ficticia: no usa marcas reales ni da consejos médicos.

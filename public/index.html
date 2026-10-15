@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1f6b3a">
+<title>Doras Survivor</title>
+<meta name="description" content="Runner web: Doras y Botas esquivan la comida más engordadora de la selva urbana.">
+<link rel="icon" href="assets/doras.webp">
+<style>
+  :root {
+    --bg: #12351f;
+    --ink: #fff8e7;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Trebuchet MS", "Segoe UI", system-ui, sans-serif;
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #wrap {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  canvas {
+    display: block;
+    border-radius: 14px;
+    box-shadow: 0 10px 40px rgba(0,0,0,.45);
+    background: #2d8a4e;
+  }
+  @media (max-width: 600px) {
+    canvas { border-radius: 0; box-shadow: none; }
+  }
+  /* Formulario para guardar el puntaje: se ubica encima del canvas desde game.js */
+  #scoreForm {
+    position: fixed;
+    display: none;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 5;
+  }
+  #scoreForm.show { display: flex; }
+  #scoreForm .row { display: flex; gap: 8px; }
+  #scoreForm input {
+    flex: 1;
+    min-width: 0;
+    font: inherit;
+    font-size: 1em;
+    padding: .45em .7em;
+    border: 3px solid #7048a8;
+    border-radius: 999px;
+    background: #fff;
+    color: #2b2140;
+    outline: none;
+    -webkit-user-select: text;
+    user-select: text;
+  }
+  #scoreForm input:focus { border-color: #f59f00; }
+  #scoreForm button {
+    font: inherit;
+    font-weight: bold;
+    font-size: 1em;
+    padding: .45em 1em;
+    border: 3px solid #9c4a00;
+    border-radius: 999px;
+    background: #ffb703;
+    color: #5b2a00;
+    cursor: pointer;
+  }
+  #scoreForm button:disabled { opacity: .6; cursor: default; }
+  #sugs { display: flex; flex-wrap: wrap; gap: 6px; min-height: 1.6em; }
+  #sugs button {
+    font-size: .8em;
+    padding: .2em .8em;
+    border-width: 2px;
+    border-color: #7048a8;
+    background: #f3eaff;
+    color: #4b2a7a;
+  }
+  #saveErr { color: #c92a2a; font-size: .8em; font-weight: bold; min-height: 1em; }
+</style>
+</head>
+<body>
+<div id="wrap"><canvas id="game" aria-label="Doras Survivor"></canvas></div>
+<form id="scoreForm" autocomplete="off">
+  <div class="row">
+    <input id="nameInput" maxlength="16" placeholder="Tu nombre para el ranking" aria-label="Tu nombre" enterkeyhint="done">
+    <button id="saveBtn" type="submit">Guardar</button>
+  </div>
+  <div id="sugs"></div>
+  <div id="saveErr"></div>
+</form>
+<script src="game.js"></script>
+</body>
+</html>
