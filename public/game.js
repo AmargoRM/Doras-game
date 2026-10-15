@@ -17,7 +17,7 @@
   const LEVEL_DURATION = 22;
   const ROUTE_LEVELS = 6; // tramos del Mapa antes del jefe final
   const ROUTE_TIME = ROUTE_LEVELS * LEVEL_DURATION;
-  const ROUTE_MAX_DIFFICULTY = 1.9; // tope de velocidad para que el final sea alcanzable
+  const ROUTE_MAX_DIFFICULTY = 2.35; // tope de velocidad para que el final sea alcanzable
   const BOSS_DURATION = 24;
   const BOSS_Y = 345;
   const ENDING_DURATION = 4;
@@ -32,7 +32,10 @@
   const JUMP_CLEARANCE = ENT * 0.30;
   const TENIS_JUMP_BOOST = 1.18;
   const LANDING_GRACE = 0.16;
-  const HIT_INVULNERABLE = 0.9;
+  const HIT_INVULNERABLE = 0.7;
+  const KCAL_FACTOR = 1.3; // cada golpe de comida pesa un 30 % más
+  const METABOLISM_RATE = 0.2; // barriga que sube sola por segundo desde el nivel 2
+  const MAX_REBOUND = 8;
   const MAX_BARRIGA = 100;
   const FIT_APPLES_FIRST = 10;
   const FIT_APPLES_REPEAT = 15;
@@ -77,7 +80,37 @@
     "Te sigue un perro caliente. No es metáfora.",
     "El médico dijo «menos sal». Escuchaste «más salsa».",
     "Ese batido verde es verde por colorante, no por espinaca.",
-    "La báscula no miente, pero tampoco ayuda."
+    "La báscula no miente, pero tampoco ayuda.",
+    "Metabolismo lento: tu cuerpo guarda calorías como si viniera el apocalipsis.",
+    "El reto de 30 días duró lo que tardó en llegar el delivery.",
+    "Contaste calorías hasta que se te acabaron los dedos.",
+    "«Me lo merezco» es la contraseña universal del antojo.",
+    "El gimnasio te manda correos. Los abrís desde el sillón.",
+    "La app de pasos dice 312. Hoy fuiste al refri 40 veces.",
+    "Leíste «0 % grasa» y no leíste «98 % azúcar».",
+    "Postre «para el camino»: el camino mide dos metros.",
+    "Tu reloj inteligente te felicitó por caminar al food truck.",
+    "Hiciste ayuno intermitente: entre bocado y bocado.",
+    "El brócoli te mira. Vos mirás para otro lado.",
+    "El delivery ya te saluda por tu nombre. Y por el de tu mascota."
+  ];
+
+  // Efecto rebote: comer «fit» de mentira acelera todo (y da likes).
+  const reboundPhrases = [
+    "EFECTO REBOTE: la culpa fit te dio hambre doble.",
+    "Más «saludable» comés, más rápido llega el antojo.",
+    "Subiste likes y bajó tu fuerza de voluntad.",
+    "Tu historia de Instagram dice fit. Tus piernas dicen auxilio.",
+    "El batido detox detoxificó tu paciencia: todo va más rápido.",
+    "Ya sos micro-influencer: 3 likes y un calambre.",
+    "El algoritmo te premia y la selva te castiga.",
+    "Rebote nivel experto: comés sano en cámara y combos en la vida real."
+  ];
+
+  const foxPhrases = [
+    "¡Zorro Antojo anda suelto! ¡Antojo, no te lo comás!",
+    "Zorro Antojo te sigue de carril en carril. Como el olor a pollo frito.",
+    "Zorro Antojo no roba mapas: roba fuerza de voluntad."
   ];
 
   const levelNames = [
@@ -245,18 +278,21 @@
                 hit: "La máquina se tragó tu moneda y vos sus galletas.",
                 defeat: "La máquina de snacks te atrapó con un «solo uno más»." },
     // Comida «fit» engañosa (Modo Fit)
-    proteinbar: { emoji: "🍫", tag: "FIT", name: "Barra «saludable»", kcal: 12, jump: true,
+    proteinbar: { emoji: "🍫", tag: "FIT", trap: true, name: "Barra «saludable»", kcal: 12, jump: true,
                 hit: "40 g de azúcar y una foto de una hoja.",
                 defeat: "La barra «saludable» tenía más azúcar que una dona sincera." },
-    smoothie: { emoji: "🧋", tag: "DETOX", name: "Batido detox de 700 kcal", kcal: 14, jump: true,
+    smoothie: { emoji: "🧋", tag: "DETOX", trap: true, name: "Batido detox de 700 kcal", kcal: 14, jump: true,
                 hit: "Detoxificó tu billetera, no tu cuerpo.",
                 defeat: "El batido detox te intoxicó de calorías." },
-    granola:  { emoji: "🥣", tag: "LIGHT", name: "Granola con miel", kcal: 11, jump: true,
+    granola:  { emoji: "🥣", tag: "LIGHT", trap: true, name: "Granola con miel", kcal: 11, jump: true,
                 hit: "Granola: el cereal que se cree ensalada.",
                 defeat: "La granola con miel te endulzó la derrota." },
-    influencer: { emoji: "🤳", tag: "CÓDIGO 10%", name: "Influencer fitness", kcal: 10, jump: true,
+    influencer: { emoji: "🤳", tag: "CÓDIGO 10%", trap: true, name: "Influencer fitness", kcal: 10, jump: true,
                 hit: "Te vendió un té adelgazante. Solo adelgazó tu cuenta.",
                 defeat: "El influencer fitness te etiquetó en su antes y después." },
+    fox:      { emoji: "🦊", name: "Zorro Antojo", kcal: 8, jump: true,
+                hit: "Zorro Antojo se robó tus power-ups y te dejó un paquete de galletas.",
+                defeat: "Zorro Antojo: «¡Uy, se te cayó la dieta!»" },
     truck:    { emoji: "🚚", name: "Food truck", kcal: 40, jump: false,
                 hit: "Te atropelló el menú completo del food truck.",
                 defeat: "El food truck te sirvió de todo, hasta el game over." }
@@ -266,6 +302,7 @@
     "chocolate", "taco", "soda", "icecream", "oil", "oil", "buffet", "combo", "vending"];
   const PARTY_POOL = ["cake", "cake", "cupcake", "cupcake", "soda", "icecream", "chocolate", "buffet"];
   const FIT_POOL = ["proteinbar", "smoothie", "granola", "influencer", "influencer", "oil"];
+  const TRAP_POOL = ["proteinbar", "smoothie", "granola", "influencer"];
 
   const BOSS_POOL = ["burger", "fries", "soda", "hotdog", "pizza", "combo", "burger", "fries"];
 
@@ -478,11 +515,14 @@
       party: false, partyTimer: 0, partyEnding: 0, partyCooldown: PARTY_INITIAL_COOLDOWN,
       bannerMsg: "", bannerTimer: 0, bannerColor: "#d6336c",
       pendingFit: false,
+      rebound: 0,
+      foxTimer: 14,
+      metabolismWarned: false,
       truck: { active: false, charging: false, lane: 1, y: 0, speed: 0, warn: 0, next: TRUCK_INITIAL_DELAY },
       flash: 0,
       submitted: false,
       saveMsg: "",
-      boss: { active: false, done: false, timer: 0, x: W / 2, throwTimer: 1.2, warnLane: -1, warnTimer: 0, hurt: 0 },
+      boss: { active: false, done: false, timer: 0, x: W / 2, throwTimer: 1.2, warnLane: -1, warnLane2: -1, warnTimer: 0, hurt: 0 },
       ending: false,
       endingTimer: 0,
       endless: false
@@ -545,7 +585,8 @@
     const def = OBST[o.type];
     const hw = ENT * (def.wide ? 0.46 : o.type === "truck" ? 0.42 : def.ground ? 0.40 : 0.30);
     const hh = ENT * (o.type === "truck" ? 0.5 : def.jump ? 0.30 : 0.38);
-    return { l: LANE_X[o.lane] - hw, t: o.y - hh, r: LANE_X[o.lane] + hw, b: o.y + hh };
+    const x = o.x ?? LANE_X[o.lane];
+    return { l: x - hw, t: o.y - hh, r: x + hw, b: o.y + hh };
   }
   function itemBounds(it) {
     return { l: LANE_X[it.lane] - ENT * 0.28, t: it.y - ENT * 0.28, r: LANE_X[it.lane] + ENT * 0.28, b: it.y + ENT * 0.28 };
@@ -567,11 +608,48 @@
   }
 
   function spawnObstacle() {
-    const pool = g.fit ? FIT_POOL : g.party ? PARTY_POOL : NORMAL_POOL;
+    let pool = g.fit ? FIT_POOL : g.party ? PARTY_POOL : NORMAL_POOL;
+    // Desde el nivel 3 la comida «fit» engañosa aparece también en el camino normal.
+    if (!g.fit && !g.party && g.level >= 3 && Math.random() < 0.18) pool = TRAP_POOL;
     const y = -ENT * 1.4;
     const lane = fairObstacleLane(y);
     if (lane === null) return;
     obstacles.push({ type: pick(pool), lane, y, seed: Math.random() * 10, cleared: false });
+    // Filas dobles: dos carriles ocupados, siempre queda uno libre.
+    const doubleChance = g.level < 2 ? 0 : Math.min(0.5, 0.16 + (g.level - 2) * 0.06 + g.rebound * 0.03);
+    if (Math.random() < doubleChance) {
+      const other = shuffled([0, 1, 2]).find((l) => l !== lane && spawnClear(l, y, ENT * 4.6) &&
+        !obstacles.some((o) => o.lane === l && Math.abs(o.y - y) < ENT * 4.6));
+      if (other !== undefined) {
+        const second = pick(pool.filter((t) => OBST[t].jump) || pool);
+        obstacles.push({ type: second || "donut", lane: other, y, seed: Math.random() * 10, cleared: false });
+      }
+    }
+  }
+
+  function updateFox(dt) {
+    if (g.level < 2 || g.boss.active || g.ending) return;
+    g.foxTimer -= dt;
+    if (g.foxTimer <= 0) {
+      g.foxTimer = rand(11, 17);
+      const y = -ENT * 1.4;
+      const lane = fairObstacleLane(y);
+      if (lane !== null) {
+        obstacles.push({ type: "fox", lane, x: LANE_X[lane], y, seed: Math.random() * 10, cleared: false, think: 0.5 });
+        phrase(pick(foxPhrases), 3);
+      }
+    }
+    // El zorro persigue tu carril hasta que está cerca; después se queda quieto.
+    for (const o of obstacles) {
+      if (o.type !== "fox") continue;
+      o.think -= dt;
+      if (o.think <= 0 && o.y > 80 && o.y < PLAYER_Y - 230) {
+        o.think = 0.6;
+        if (o.lane !== player.lane) o.lane += Math.sign(player.lane - o.lane);
+      }
+      const tx = LANE_X[o.lane];
+      o.x += (tx - o.x) * Math.min(1, 8 * dt);
+    }
   }
 
   function spawnItem() {
@@ -631,6 +709,18 @@
         continue;
       }
       if (player.invul > 0) continue;
+      if (def.trap) {
+        obstacles.splice(i, 1);
+        takeTrap(o, def);
+        if (state.screen !== "playing") return;
+        continue;
+      }
+      if (o.type === "fox") {
+        obstacles.splice(i, 1);
+        foxSteals(o, def);
+        if (state.screen !== "playing") return;
+        continue;
+      }
       if (player.tenisTime > 0 && def.tenis) {
         obstacles.splice(i, 1);
         powerMsg("Los tenis cruzaron el aceite");
@@ -646,7 +736,7 @@
       }
       obstacles.splice(i, 1);
       burst(LANE_X[o.lane], o.y, "#f59f00");
-      addBarriga(def.kcal, def);
+      addBarriga(Math.round(def.kcal * KCAL_FACTOR), def);
       if (state.screen !== "playing") return;
     }
 
@@ -658,6 +748,39 @@
     }
   }
 
+  // Comida «fit» de mentira: casi no engorda, pero activa el Efecto Rebote.
+  function takeTrap(o, def) {
+    burst(LANE_X[o.lane], o.y, "#69db7c", 14);
+    g.rebound = Math.min(MAX_REBOUND, g.rebound + 1);
+    g.bonus += 100 * g.rebound;
+    g.barriga = Math.min(MAX_BARRIGA, g.barriga + 4);
+    player.invul = 0.4;
+    audio.warn();
+    if (g.barriga >= MAX_BARRIGA) { endGame(def.defeat); return; }
+    banner("EFECTO REBOTE x" + g.rebound + ": todo más rápido · likes x" + likesMult().toFixed(2), "#2b8a3e");
+    powerMsg(def.hit);
+    phrase(pick(reboundPhrases), 3.5);
+  }
+
+  function foxSteals(o, def) {
+    burst(o.x, o.y, "#ff922b", 14);
+    const stolen = [];
+    if (player.shield) { player.shield = false; stolen.push("brócoli"); }
+    if (player.tenisTime > 0) { player.tenisTime = 0; stolen.push("tenis"); }
+    if (player.waterTime > 0) { player.waterTime = 0; stolen.push("agua"); }
+    phrase(stolen.length ? "Zorro Antojo se robó: " + stolen.join(", ") + ". A cambio te dejó galletas." : def.hit, 3.5);
+    g.barriga = Math.min(MAX_BARRIGA, g.barriga + Math.round(def.kcal * KCAL_FACTOR));
+    player.invul = HIT_INVULNERABLE;
+    player.squash = 0.3;
+    g.flash = 0.25;
+    audio.hit();
+    if (g.barriga >= MAX_BARRIGA) endGame(def.defeat);
+    else powerMsg("¡Antojo, no te lo comás!");
+  }
+
+  const likesMult = () => 1 + g.rebound * 0.25;
+  const reboundSpeed = () => 1 + g.rebound * 0.05;
+
   function applyItem(it) {
     audio.collect();
     burst(LANE_X[it.lane], it.y, "#8ce99a", 8);
@@ -666,14 +789,14 @@
         const mult = g.fit ? 2 : 1;
         g.apples += 1;
         g.bonus += 150 * mult;
-        g.barriga = Math.max(0, g.barriga - 4);
+        g.barriga = Math.max(0, g.barriga - 2);
         powerMsg(g.fit ? "+2 manzanas fit" : "+1 manzana");
         if (g.apples >= g.nextFitAt) requestFit();
         break;
       }
       case "water":
-        player.waterTime = 6;
-        g.barriga = Math.max(0, g.barriga - 8);
+        player.waterTime = 5;
+        g.barriga = Math.max(0, g.barriga - 5);
         g.bonus += 50;
         powerMsg("Agua: todo va más lento y vos más liviano");
         phrase("Agua: la bebida que nadie publicita porque es gratis.", 3);
@@ -689,9 +812,9 @@
         powerMsg("Escudo de brócoli activado");
         break;
       case "salad":
-        g.barriga = Math.max(0, g.barriga - 20);
+        g.barriga = Math.max(0, g.barriga - 12);
         g.bonus += 200;
-        powerMsg("¡Ensalada real! −20 barriga");
+        powerMsg("¡Ensalada real! −12 barriga");
         phrase("Una ensalada de verdad. Mapa la marcó como sitio arqueológico.", 3);
         break;
     }
@@ -709,7 +832,7 @@
     cancelTruck();
     g.fit = true;
     g.fitTimer = FIT_DURATION;
-    banner("MODO FIT: comida «saludable» por " + FIT_DURATION + " s", "#2b8a3e");
+    banner("MODO FIT: ojo con lo «saludable» (" + FIT_DURATION + " s)", "#2b8a3e");
     phrase(pick(fitPhrases), 3);
     audio.level();
   }
@@ -810,7 +933,7 @@
   // ---------- Bucle de juego ----------
   function update(dt) {
     g.time += dt;
-    g.difficulty = 1 + g.time * 0.0065 + g.time * g.time * 0.000012;
+    g.difficulty = 1 + g.time * 0.009 + g.time * g.time * 0.000018;
     if (!g.endless) g.difficulty = Math.min(g.difficulty, ROUTE_MAX_DIFFICULTY);
     let lvl = 1 + Math.floor(g.time / LEVEL_DURATION);
     if (!g.endless) {
@@ -830,7 +953,7 @@
     const eventMult = g.fit ? 1.08 : g.party ? 1.06 :
       g.fitEnding > 0 ? 1 + 0.08 * (g.fitEnding / EVENT_EXIT) :
       g.partyEnding > 0 ? 1 + 0.06 * (g.partyEnding / EVENT_EXIT) : 1;
-    g.speed = BASE_SPEED * g.difficulty * eventMult;
+    g.speed = BASE_SPEED * g.difficulty * eventMult * reboundSpeed();
     const eff = player.waterTime > 0 ? g.speed * 0.8 : g.speed;
     audio.tempo = Math.min(1.25, 1 + g.time / 300);
 
@@ -849,7 +972,8 @@
       spawnObstacle();
       const pressure = 1 + (g.level - 1) * 0.055;
       const base = BASE_OBSTACLE_INTERVAL + Math.random() * OBSTACLE_INTERVAL_VARIATION;
-      g.obstacleTimer = Math.max(base / (g.difficulty * pressure) * (g.fit ? 1.35 : 1), MIN_OBSTACLE_INTERVAL);
+      g.obstacleTimer = Math.max(base / (g.difficulty * pressure * (1 + g.rebound * 0.07)) * (g.fit ? 1.35 : 1),
+        MIN_OBSTACLE_INTERVAL);
     }
     g.itemTimer -= dt;
     if (g.itemTimer <= 0 && !g.ending) {
@@ -863,10 +987,24 @@
     obstacles = obstacles.filter((o) => o.y < H + ENT * 2);
     items = items.filter((it) => it.y < H + ENT * 2);
 
+    updateFox(dt);
     checkCollisions();
     if (state.screen !== "playing") return;
 
-    g.passive += dt * 10 * (g.fit ? 2 : 1);
+    // Metabolismo lento: desde el nivel 2 la barriga sube sola un poquito.
+    if (g.level >= 2 && !g.fit && !g.ending) {
+      if (!g.metabolismWarned) {
+        g.metabolismWarned = true;
+        phrase("Nivel 2: se activó tu metabolismo de oficina. La barriga sube sola, despacito.", 4);
+      }
+      g.barriga += METABOLISM_RATE * dt;
+      if (g.barriga >= MAX_BARRIGA) {
+        endGame("Ni comiste nada: tu metabolismo de oficina hizo todo el trabajo.");
+        return;
+      }
+    }
+
+    g.passive += dt * 10 * (g.fit ? 2 : 1) * likesMult();
     g.score = Math.floor(g.passive) + g.bonus;
 
     for (const p of particles) {
@@ -881,7 +1019,7 @@
     g.phraseTimer -= dt;
     if (g.phraseTimer <= 0) {
       phrase(g.boss.active ? pick(bossPhrases) : g.fit ? pick(fitPhrases) : g.party ? pick(partyPhrases) :
-        pick(phrasesGeneral), g.fit || g.party || g.boss.active ? 3.2 : 5);
+        g.rebound > 0 && Math.random() < 0.3 ? pick(reboundPhrases) : pick(phrasesGeneral), g.fit || g.party || g.boss.active ? 3.2 : 5);
     }
   }
 
@@ -889,7 +1027,7 @@
   function startBoss() {
     cancelTruck();
     g.fit = false; g.party = false; g.fitEnding = 0; g.partyEnding = 0;
-    Object.assign(g.boss, { active: true, timer: BOSS_DURATION, x: W / 2, throwTimer: 1.4, warnLane: -1, warnTimer: 0, hurt: 0 });
+    Object.assign(g.boss, { active: true, timer: BOSS_DURATION, x: W / 2, throwTimer: 1.4, warnLane: -1, warnLane2: -1, warnTimer: 0, hurt: 0 });
     g.levelMsgTimer = 0;
     banner("JEFE FINAL: EL REY COMBO AGRANDADO", "#c92a2a");
     phrase("Mapa: «Para llegar al Templo de la Ensalada hay que pasar por el Castillo del Rey Combo».", 4);
@@ -905,19 +1043,28 @@
       b.warnTimer -= dt;
       if (b.warnTimer <= 0) {
         obstacles.push({ type: pick(BOSS_POOL), lane: b.warnLane, y: BOSS_Y + 70, seed: Math.random() * 10, cleared: false });
+        if (b.warnLane2 >= 0) {
+          obstacles.push({ type: pick(["burger", "fries", "soda", "hotdog"]), lane: b.warnLane2, y: BOSS_Y + 70,
+            seed: Math.random() * 10, cleared: false });
+        }
         b.warnLane = -1;
+        b.warnLane2 = -1;
         b.hurt = 0.15;
       }
     } else {
       b.throwTimer -= dt;
       if (b.throwTimer <= 0) {
         const lane = fairObstacleLane(BOSS_Y + 70);
+        const progress = 1 - b.timer / BOSS_DURATION;
         if (lane !== null) {
           b.warnLane = lane;
           b.warnTimer = 0.6;
+          // Tiro doble (dos carriles, uno de ellos saltable): siempre queda un carril libre.
+          if (progress > 0.25 && Math.random() < 0.35 + progress * 0.25) {
+            b.warnLane2 = shuffled([0, 1, 2]).find((l) => l !== lane) ?? -1;
+          }
         }
-        const progress = 1 - b.timer / BOSS_DURATION;
-        b.throwTimer = Math.max(0.5, 0.95 - progress * 0.35);
+        b.throwTimer = Math.max(0.42, 0.85 - progress * 0.35);
       }
     }
     if (b.timer <= 0) defeatBoss();
@@ -928,6 +1075,7 @@
     b.active = false;
     b.done = true;
     b.warnLane = -1;
+    b.warnLane2 = -1;
     g.bonus += 2000;
     burst(b.x, BOSS_Y, "#ffd43b", 40);
     burst(b.x, BOSS_Y, "#ff6b6b", 30);
@@ -1149,8 +1297,8 @@
 
   function drawObstacle(o, time) {
     const def = OBST[o.type];
-    const x = LANE_X[o.lane];
-    const y = o.y + (o.type === "influencer" ? Math.sin(time * 6 + o.seed) * 4 : 0);
+    const x = o.x ?? LANE_X[o.lane];
+    const y = o.y + (o.type === "influencer" || o.type === "fox" ? Math.sin(time * 6 + o.seed) * 4 : 0);
     // sombra
     ctx.fillStyle = "rgba(0,0,0,.18)";
     ctx.beginPath();
@@ -1215,7 +1363,7 @@
     ctx.font = "bold 13px 'Trebuchet MS',sans-serif";
     const tw = Math.min(150, ctx.measureText(def.name).width + 12);
     rr(x - tw / 2, y + ENT * 0.38, tw, 20, 10);
-    ctx.fillStyle = def.jump ? "rgba(0,0,0,.55)" : "rgba(201,42,42,.85)";
+    ctx.fillStyle = def.trap ? "rgba(43,138,62,.9)" : o.type === "fox" ? "rgba(232,89,12,.9)" : def.jump ? "rgba(0,0,0,.55)" : "rgba(201,42,42,.85)";
     ctx.fill();
     text(def.name, x, y + ENT * 0.38 + 10, 13, "#fff");
   }
@@ -1233,8 +1381,9 @@
   function drawBoss(time) {
     const b = g.boss;
     if (!b.active) return;
-    if (b.warnLane >= 0) {
-      const x = LANE_X[b.warnLane];
+    for (const wl of [b.warnLane, b.warnLane2]) {
+      if (wl < 0) continue;
+      const x = LANE_X[wl];
       const on = Math.floor(time * 10) % 2 === 0;
       ctx.fillStyle = on ? "rgba(255,59,48,.30)" : "rgba(255,59,48,.12)";
       ctx.fillRect(x - 64, BOSS_Y + 40, 128, H - BOSS_Y - 40);
@@ -1437,6 +1586,7 @@
     // Power-ups activos
     let px = 18;
     const chips = [];
+    if (g.rebound > 0) chips.push(["📈", "Rebote x" + g.rebound + " · likes x" + likesMult().toFixed(2)]);
     if (player.shield) chips.push(["🥦", "Escudo"]);
     if (player.waterTime > 0) chips.push(["💧", player.waterTime.toFixed(1) + "s"]);
     if (player.tenisTime > 0) chips.push(["👟", player.tenisTime.toFixed(1) + "s"]);
@@ -1621,15 +1771,14 @@
     const rows = [
       ["⬅️➡️", "Deslizá o usá ◀ ▶ / flechas para cambiar de carril."],
       ["⬆️", "Tocá la pantalla, deslizá arriba o Espacio para saltar."],
-      ["🍔", "La comida chatarra llena el Barriga-metro. Al 100% perdés."],
+      ["🍔", "La chatarra llena el Barriga-metro (y sube sola desde el nivel 2). Al 100% perdés."],
       ["🍱", "Lo rojo (buffet, combo, máquina) no se salta: esquivalo."],
-      ["🍎", "Manzana: puntos y baja la barriga. 10 = Modo Fit."],
-      ["💧", "Agua: todo va más lento y baja la barriga."],
-      ["👟", "Tenis: saltás más y cruzás charcos de aceite."],
-      ["🥦", "Brócoli: escudo contra un golpe."],
-      ["🥗", "Ensalada real: −20 de barriga."],
-      ["🚚", "Food truck: avisa el carril y baja rapidísimo."],
-      ["🎂", "Cumpleaños en la oficina: llueve pastel."],
+      ["🧋", "Lo verde «FIT» es trampa: casi no engorda, pero activa el Efecto Rebote: todo más rápido y más puntos."],
+      ["🦊", "Zorro Antojo te persigue de carril y te roba los power-ups. Saltalo."],
+      ["🍎", "Manzana: puntos y un poco menos de barriga. 10 = Modo Fit."],
+      ["💧", "Agua: todo más lento. 👟 Tenis: salto alto. 🥦 Brócoli: escudo."],
+      ["🥗", "Ensalada real: −12 de barriga."],
+      ["🚚", "Food truck, 🎂 cumpleaños de oficina y otras sorpresas."],
       ["🏛️", "Al final del Mapa: jefe final y un premio ridículo."]
     ];
     let y = 146;

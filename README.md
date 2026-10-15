@@ -26,7 +26,12 @@ Doras y Botas recorren la selva esquivando la comida más engordadora. Cada golp
 | 💧 Agua | Todo va más lento por 6 s y baja la barriga. |
 | 👟 Tenis | Salto más alto y cruzan charcos de aceite por 8 s. |
 | 🥦 Brócoli | Escudo contra un golpe. |
-| 🥗 Ensalada | Baja 20 % la barriga. |
+| 🥗 Ensalada | Baja 12 % la barriga. |
+| Comida «FIT» (etiqueta verde: barra saludable, batido detox, granola, influencer) | Trampa: casi no engorda, pero activa el **Efecto Rebote**: todo va un 5 % más rápido por cada una, aparecen más obstáculos y los puntos se multiplican ("likes"). Se acumula hasta x8. |
+| 🦊 Zorro Antojo | Desde el nivel 2. Te persigue cambiando de carril y te roba escudo, tenis y agua. Hay que saltarlo. |
+
+Además, desde el nivel 2 el **metabolismo lento** hace subir la barriga sola, despacito, y
+aparecen **filas dobles** (dos carriles ocupados, uno libre).
 
 ## Eventos especiales
 
