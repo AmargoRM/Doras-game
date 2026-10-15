@@ -14,7 +14,14 @@
   const PLAYER_Y = H * 0.77;
   const PLAYER_DRAW_H = 190;
   const BASE_SPEED = 330;
-  const LEVEL_DURATION = 30;
+  const LEVEL_DURATION = 22;
+  const ROUTE_LEVELS = 6; // tramos del Mapa antes del jefe final
+  const ROUTE_TIME = ROUTE_LEVELS * LEVEL_DURATION;
+  const ROUTE_MAX_DIFFICULTY = 1.9; // tope de velocidad para que el final sea alcanzable
+  const BOSS_DURATION = 24;
+  const BOSS_Y = 345;
+  const ENDING_DURATION = 4;
+  const VICTORY_BONUS = 5000;
   const BASE_OBSTACLE_INTERVAL = 1.05 * 0.65;
   const OBSTACLE_INTERVAL_VARIATION = 0.45 * 0.65;
   const MIN_OBSTACLE_INTERVAL = 0.34;
@@ -138,6 +145,48 @@
     "Respirá, tomá agua, volvé a intentar. Eso sí es fit."
   ];
 
+  const bossPhrases = [
+    "EL REY COMBO: «¿Lo agrandamos? No era pregunta.»",
+    "El Rey Combo lanza papas como argumentos: muchas y sin sustancia.",
+    "«¡Nadie escapa del 2x1!» grita el Rey Combo.",
+    "El Rey Combo trae corona de cartón y salsa de autoridad.",
+    "Botas sugiere esquivar. Mapa sugiere rezar.",
+    "El Rey Combo se está cansando: lanzar comida también engorda.",
+    "«¡Mi reino por una siesta!» jadea el Rey Combo."
+  ];
+
+  const victoryPrizes = [
+    "Un vale por una ensalada, válido el lunes que viene (todos los lunes).",
+    "Membresía VIP de un gimnasio que cierra mañana.",
+    "Un diploma de «Persona Saludable» firmado por una dona.",
+    "Una manzana. Una sola. Ya mordida por Botas.",
+    "Un año gratis de agua del tubo.",
+    "Una camiseta talla S «para motivarte».",
+    "Un abrazo del nutricionista (cobrado como consulta).",
+    "Un trofeo de chocolate. Ya se derritió.",
+    "Una estatua tuya en el Templo… hecha de mantequilla.",
+    "Descuento del 2 % en lechuga los martes de año bisiesto.",
+    "3 seguidores nuevos: dos bots y tu tía.",
+    "Certificado de dieta vigente hasta el próximo cumpleaños de oficina.",
+    "Un batido detox de 700 kcal, cortesía de la casa.",
+    "El título de «Embajador del Brócoli» (sin salario).",
+    "Una medalla de oro… de papel aluminio de tamal."
+  ];
+
+  // Título según cómo llegaste (porcentaje del Barriga-metro).
+  const victoryRanks = [
+    [15, "Atleta de Brochure"],
+    [40, "Influencer Fit sin Código de Descuento"],
+    [70, "Ciudadano Promedio con Buenas Intenciones"],
+    [101, "Sobreviviente del Combo (por los pelos)"]
+  ];
+
+  const victoryClosers = [
+    "Mapa: «¡Lo logramos!» · Botas: «¿Y ahora qué comemos?»",
+    "Mapa: «¡Lo hicimos!» · Botas: «¿Hay pastel para celebrar?»",
+    "Mapa: «¡Misión cumplida!» · Botas: «Pidamos un combo para festejar.»"
+  ];
+
   // ---------- Tipos de obstáculos ----------
   // kcal: cuánto llena el Barriga-metro. jump: se puede saltar. tenis: los tenis lo cruzan.
   const OBST = {
@@ -214,6 +263,8 @@
     "chocolate", "taco", "soda", "icecream", "oil", "oil", "buffet", "combo", "vending"];
   const PARTY_POOL = ["cake", "cake", "cupcake", "cupcake", "soda", "icecream", "chocolate", "buffet"];
   const FIT_POOL = ["proteinbar", "smoothie", "granola", "influencer", "influencer", "oil"];
+
+  const BOSS_POOL = ["burger", "fries", "soda", "hotdog", "pizza", "combo", "burger", "fries"];
 
   const ITEMS = {
     apple:   { emoji: "🍎", name: "Manzana" },
@@ -304,6 +355,9 @@
     hit() { this.tone(160, 0.28, "sawtooth", 0.08, 0, -90); },
     level() { [523, 659, 784, 1046].forEach((f, i) => this.tone(f, 0.12, "triangle", 0.07, i * 0.09)); },
     warn() { this.tone(740, 0.12, "square", 0.06); this.tone(740, 0.12, "square", 0.06, 0.2); },
+    fanfare() {
+      [523, 659, 784, 1046, 784, 1046, 1318].forEach((f, i) => this.tone(f, i === 6 ? 0.5 : 0.14, "triangle", 0.08, i * 0.12));
+    },
     over() { [392, 330, 262, 196].forEach((f, i) => this.tone(f, 0.25, "triangle", 0.08, i * 0.18)); },
     startMusic() {
       this.stopMusic();
@@ -396,7 +450,11 @@
       bannerMsg: "", bannerTimer: 0, bannerColor: "#d6336c",
       pendingFit: false,
       truck: { active: false, charging: false, lane: 1, y: 0, speed: 0, warn: 0, next: TRUCK_INITIAL_DELAY },
-      flash: 0
+      flash: 0,
+      boss: { active: false, done: false, timer: 0, x: W / 2, throwTimer: 1.2, warnLane: -1, warnTimer: 0, hurt: 0 },
+      ending: false,
+      endingTimer: 0,
+      endless: false
     };
   }
 
@@ -609,7 +667,7 @@
   }
 
   // ---------- Eventos especiales ----------
-  const eventBusy = () => g.fit || g.party || g.fitEnding > 0 || g.partyEnding > 0;
+  const eventBusy = () => g.fit || g.party || g.fitEnding > 0 || g.partyEnding > 0 || g.boss.active || g.ending;
 
   function requestFit() {
     g.nextFitAt += FIT_APPLES_REPEAT;
@@ -669,6 +727,7 @@
   }
   function updateTruck(dt, effSpeed) {
     const t = g.truck;
+    if (g.boss.active || g.ending) return;
     if (t.active) {
       if (!t.charging) {
         t.warn -= dt;
@@ -721,7 +780,12 @@
   function update(dt) {
     g.time += dt;
     g.difficulty = 1 + g.time * 0.0065 + g.time * g.time * 0.000012;
-    const lvl = 1 + Math.floor(g.time / LEVEL_DURATION);
+    if (!g.endless) g.difficulty = Math.min(g.difficulty, ROUTE_MAX_DIFFICULTY);
+    let lvl = 1 + Math.floor(g.time / LEVEL_DURATION);
+    if (!g.endless) {
+      lvl = Math.min(lvl, ROUTE_LEVELS);
+      if (g.time >= ROUTE_TIME && !g.boss.active && !g.boss.done) startBoss();
+    }
     if (lvl > g.level) {
       g.level = lvl;
       g.levelMsg = "NIVEL " + lvl + ": " + levelNames[(lvl - 1) % levelNames.length];
@@ -743,16 +807,21 @@
     updateEvents(dt);
     updateTruck(dt, eff);
     if (state.screen !== "playing") return;
+    if (g.boss.active) updateBoss(dt);
+    if (g.ending) {
+      updateEnding(dt);
+      if (state.screen !== "playing") return;
+    }
 
     g.obstacleTimer -= dt;
-    if (g.obstacleTimer <= 0) {
+    if (g.obstacleTimer <= 0 && !g.boss.active && !g.ending) {
       spawnObstacle();
       const pressure = 1 + (g.level - 1) * 0.055;
       const base = BASE_OBSTACLE_INTERVAL + Math.random() * OBSTACLE_INTERVAL_VARIATION;
       g.obstacleTimer = Math.max(base / (g.difficulty * pressure) * (g.fit ? 1.35 : 1), MIN_OBSTACLE_INTERVAL);
     }
     g.itemTimer -= dt;
-    if (g.itemTimer <= 0) {
+    if (g.itemTimer <= 0 && !g.ending) {
       spawnItem();
       g.itemTimer = (COLLECTIBLE_INTERVAL + Math.random() * COLLECTIBLE_VARIATION) * (g.fit ? 0.45 : 1);
     }
@@ -780,9 +849,99 @@
     g.flash = Math.max(0, g.flash - dt);
     g.phraseTimer -= dt;
     if (g.phraseTimer <= 0) {
-      phrase(g.fit ? pick(fitPhrases) : g.party ? pick(partyPhrases) : pick(phrasesGeneral),
-        g.fit || g.party ? 3.2 : 5);
+      phrase(g.boss.active ? pick(bossPhrases) : g.fit ? pick(fitPhrases) : g.party ? pick(partyPhrases) :
+        pick(phrasesGeneral), g.fit || g.party || g.boss.active ? 3.2 : 5);
     }
+  }
+
+  // ---------- Jefe final: el Rey Combo ----------
+  function startBoss() {
+    cancelTruck();
+    g.fit = false; g.party = false; g.fitEnding = 0; g.partyEnding = 0;
+    Object.assign(g.boss, { active: true, timer: BOSS_DURATION, x: W / 2, throwTimer: 1.4, warnLane: -1, warnTimer: 0, hurt: 0 });
+    g.levelMsgTimer = 0;
+    banner("JEFE FINAL: EL REY COMBO AGRANDADO", "#c92a2a");
+    phrase("Mapa: «Para llegar al Templo de la Ensalada hay que pasar por el Castillo del Rey Combo».", 4);
+    audio.warn();
+  }
+
+  function updateBoss(dt) {
+    const b = g.boss;
+    b.timer -= dt;
+    b.hurt = Math.max(0, b.hurt - dt);
+    b.x = W / 2 + Math.sin(g.time * 1.4) * 140;
+    if (b.warnLane >= 0) {
+      b.warnTimer -= dt;
+      if (b.warnTimer <= 0) {
+        obstacles.push({ type: pick(BOSS_POOL), lane: b.warnLane, y: BOSS_Y + 70, seed: Math.random() * 10, cleared: false });
+        b.warnLane = -1;
+        b.hurt = 0.15;
+      }
+    } else {
+      b.throwTimer -= dt;
+      if (b.throwTimer <= 0) {
+        const lane = fairObstacleLane(BOSS_Y + 70);
+        if (lane !== null) {
+          b.warnLane = lane;
+          b.warnTimer = 0.6;
+        }
+        const progress = 1 - b.timer / BOSS_DURATION;
+        b.throwTimer = Math.max(0.5, 0.95 - progress * 0.35);
+      }
+    }
+    if (b.timer <= 0) defeatBoss();
+  }
+
+  function defeatBoss() {
+    const b = g.boss;
+    b.active = false;
+    b.done = true;
+    b.warnLane = -1;
+    g.bonus += 2000;
+    burst(b.x, BOSS_Y, "#ffd43b", 40);
+    burst(b.x, BOSS_Y, "#ff6b6b", 30);
+    for (const o of obstacles) burst(LANE_X[o.lane], o.y, "#f59f00", 6);
+    obstacles = [];
+    g.ending = true;
+    g.endingTimer = ENDING_DURATION;
+    setLane(1);
+    banner("¡EL REY COMBO SE EMPACHÓ DE SÍ MISMO!", "#2b8a3e");
+    phrase("Mapa: «¡Ya casi! Allá se ve el Templo de la Ensalada Legendaria».", ENDING_DURATION);
+    audio.level();
+  }
+
+  function updateEnding(dt) {
+    g.endingTimer -= dt;
+    items = [];
+    if (g.endingTimer <= 0) victory();
+  }
+
+  function victory() {
+    g.ending = false;
+    g.bonus += VICTORY_BONUS;
+    g.score = Math.floor(g.passive) + g.bonus;
+    state.screen = "victory";
+    state.victoryStart = performance.now() / 1000;
+    state.prizes = shuffled(victoryPrizes).slice(0, 3);
+    state.rank = victoryRanks.find(([max]) => g.barriga < max)[1];
+    state.closer = pick(victoryClosers);
+    state.newRecord = false;
+    if (g.score > state.best) {
+      state.best = g.score;
+      state.newRecord = true;
+      writeStorage(STORAGE_BEST, String(state.best));
+    }
+    audio.stopMusic();
+    audio.fanfare();
+  }
+
+  function continueEndless() {
+    g.endless = true;
+    player.invul = 1.5;
+    g.obstacleTimer = 1.2;
+    state.screen = "playing";
+    phrase("Modo infinito: la comida no se rinde y vos tampoco. Bueno, ya veremos.", 4);
+    audio.startMusic();
   }
 
   function endGame(defeat) {
@@ -861,6 +1020,8 @@
     toMenu: { x: 150, y: 592, w: 240, h: 60, label: "Menú" },
     retry: { x: 110, y: 744, w: 320, h: 70, label: "Intentar de nuevo" },
     overMenu: { x: 170, y: 826, w: 200, h: 58, label: "Menú" },
+    vicEndless: { x: 80, y: 800, w: 380, h: 66, label: "Seguir corriendo (modo infinito)" },
+    vicMenu: { x: 170, y: 878, w: 200, h: 54, label: "Menú" },
     left: { x: 16, y: 872, w: 150, h: 74, label: "◀" },
     jumpB: { x: 195, y: 872, w: 150, h: 74, label: "⤒ Saltar" },
     right: { x: 374, y: 872, w: 150, h: 74, label: "▶" }
@@ -1034,6 +1195,92 @@
     drawEmoji(ITEMS[it.type].emoji, x, y, 52);
   }
 
+  function drawBoss(time) {
+    const b = g.boss;
+    if (!b.active) return;
+    if (b.warnLane >= 0) {
+      const x = LANE_X[b.warnLane];
+      const on = Math.floor(time * 10) % 2 === 0;
+      ctx.fillStyle = on ? "rgba(255,59,48,.30)" : "rgba(255,59,48,.12)";
+      ctx.fillRect(x - 64, BOSS_Y + 40, 128, H - BOSS_Y - 40);
+    }
+    const pulse = 1 + Math.sin(time * 5) * 0.04 + (b.hurt > 0 ? 0.08 : 0);
+    const x = b.x;
+    // Sombra y cuerpo: una hamburguesa gigante con corona
+    ctx.fillStyle = "rgba(0,0,0,.2)";
+    ctx.beginPath();
+    ctx.ellipse(x, BOSS_Y + 72, 90, 18, 0, 0, Math.PI * 2);
+    ctx.fill();
+    drawEmoji("🍔", x, BOSS_Y, 150 * pulse);
+    drawEmoji("👑", x, BOSS_Y - 92 * pulse, 64);
+    drawEmoji("🍟", x - 92, BOSS_Y + 18 + Math.sin(time * 6) * 8, 50);
+    drawEmoji("🥤", x + 92, BOSS_Y + 18 + Math.cos(time * 6) * 8, 50);
+    // Ojos enojados
+    ctx.fillStyle = "#fff";
+    for (const dx of [-26, 26]) {
+      ctx.beginPath();
+      ctx.ellipse(x + dx, BOSS_Y - 14, 13, 11, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = "#1a1a1a";
+    for (const dx of [-24, 24]) {
+      ctx.beginPath();
+      ctx.arc(x + dx + Math.sin(time * 3) * 3, BOSS_Y - 12, 6, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.strokeStyle = "#1a1a1a";
+    ctx.lineWidth = 5;
+    ctx.beginPath();
+    ctx.moveTo(x - 42, BOSS_Y - 34); ctx.lineTo(x - 12, BOSS_Y - 24);
+    ctx.moveTo(x + 42, BOSS_Y - 34); ctx.lineTo(x + 12, BOSS_Y - 24);
+    ctx.stroke();
+  }
+
+  function drawBossBar() {
+    const b = g.boss;
+    if (!b.active) return;
+    const y = 190;
+    rr(40, y, 460, 40, 14);
+    ctx.fillStyle = "rgba(201,42,42,.92)";
+    ctx.fill();
+    text("👑 Paciencia del Rey Combo", 56, y + 20, 15, "#fff", "left");
+    rr(290, y + 11, 196, 18, 9);
+    ctx.fillStyle = "rgba(255,255,255,.25)";
+    ctx.fill();
+    const pct = Math.max(0, b.timer / BOSS_DURATION);
+    if (pct > 0) {
+      rr(290, y + 11, Math.max(18, 196 * pct), 18, 9);
+      ctx.fillStyle = "#ffd43b";
+      ctx.fill();
+    }
+  }
+
+  function drawTemple(time) {
+    if (!g.ending) return;
+    const t = 1 - g.endingTimer / ENDING_DURATION;
+    const y = -160 + Math.min(1, t * 1.4) * 560;
+    // rayos de luz
+    ctx.save();
+    ctx.globalAlpha = 0.35;
+    ctx.translate(W / 2, y);
+    for (let i = 0; i < 12; i++) {
+      ctx.rotate(Math.PI / 6 + time * 0.02);
+      ctx.fillStyle = i % 2 ? "#fff3bf" : "#d3f9d8";
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-30, -420);
+      ctx.lineTo(30, -420);
+      ctx.fill();
+    }
+    ctx.restore();
+    drawEmoji("🏛️", W / 2, y, 170);
+    drawEmoji("🥗", W / 2, y - 120 + Math.sin(time * 4) * 6, 70);
+    rr(W / 2 - 170, y + 96, 340, 34, 17);
+    ctx.fillStyle = "rgba(43,138,62,.95)";
+    ctx.fill();
+    text("Templo de la Ensalada Legendaria", W / 2, y + 113, 17, "#fff");
+  }
+
   function drawTruck(time) {
     const t = g.truck;
     if (!t.active) return;
@@ -1127,7 +1374,7 @@
     ctx.fill();
     text(String(g.score), 30, 34, 26, "#ffd43b", "left");
     text("Récord " + Math.max(state.best, g.score), 30, 60, 15, "#e9ecef", "left", "normal");
-    text("Nivel " + g.level, 175, 34, 20, "#fff", "left");
+    text(g.boss.active || g.ending ? "¡Jefe!" : "Nivel " + g.level, 175, 34, 20, "#fff", "left");
     text("🍎 " + g.apples, 175, 60, 16, "#fff", "left", "normal");
 
     // Barriga-metro
@@ -1202,6 +1449,9 @@
       ctx.globalAlpha = 1;
     }
 
+    drawBossBar();
+    drawRouteBar();
+
     // Controles táctiles
     for (const b of [buttons.left, buttons.jumpB, buttons.right]) {
       rr(b.x, b.y, b.w, b.h, 22);
@@ -1217,6 +1467,40 @@
       ctx.fillStyle = "rgba(255,120,0," + (g.flash * 1.2).toFixed(2) + ")";
       ctx.fillRect(0, 0, W, H);
     }
+  }
+
+  function drawRouteBar() {
+    const y = 852;
+    const x0 = 70, x1 = 440;
+    rr(20, y - 15, 500, 30, 15);
+    ctx.fillStyle = "rgba(25,20,40,.55)";
+    ctx.fill();
+    if (g.endless) {
+      text("🗺️ Modo infinito: la ruta ya terminó, la comida no.", W / 2, y + 1, 14, "#fff");
+      return;
+    }
+    drawEmoji("🗺️", 40, y, 20);
+    ctx.strokeStyle = "rgba(255,255,255,.35)";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(x0, y); ctx.lineTo(x1, y);
+    ctx.stroke();
+    const frac = g.boss.done ? 1 : Math.min(1, g.time / ROUTE_TIME);
+    ctx.strokeStyle = "#ffd43b";
+    ctx.beginPath();
+    ctx.moveTo(x0, y); ctx.lineTo(x0 + (x1 - x0) * frac, y);
+    ctx.stroke();
+    for (let i = 1; i < ROUTE_LEVELS; i++) {
+      const sx = x0 + (x1 - x0) * (i / ROUTE_LEVELS);
+      ctx.fillStyle = frac >= i / ROUTE_LEVELS ? "#ffd43b" : "rgba(255,255,255,.6)";
+      ctx.beginPath();
+      ctx.arc(sx, y, 5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    drawEmoji("🍔", x1 + 22, y, 20);
+    drawEmoji("🥗", x1 + 54, y, 20);
+    const mx = x0 + (x1 - x0) * frac;
+    if (doraReady) ctx.drawImage(doraImg, mx - 13, y - 19, 26, 36);
   }
 
   // ---------- Pantallas ----------
@@ -1283,7 +1567,8 @@
       ["🥦", "Brócoli: escudo contra un golpe."],
       ["🥗", "Ensalada real: −20 de barriga."],
       ["🚚", "Food truck: avisa el carril y baja rapidísimo."],
-      ["🎂", "Cumpleaños en la oficina: llueve pastel."]
+      ["🎂", "Cumpleaños en la oficina: llueve pastel."],
+      ["🏛️", "Al final del Mapa: jefe final y un premio ridículo."]
     ];
     let y = 146;
     for (const [e, t] of rows) {
@@ -1336,6 +1621,77 @@
     drawButton(buttons.overMenu, false, 22);
   }
 
+  function drawVictory(time) {
+    const el = time - (state.victoryStart || time);
+    overlay(0.55);
+    // Confeti
+    const colors = ["#ff6b6b", "#ffd43b", "#4dabf7", "#b197fc", "#63e6be", "#ff922b"];
+    for (let i = 0; i < 60; i++) {
+      const x = (i * 97.3 + Math.sin(time + i) * 20) % W;
+      const y = ((i * 53 + time * (80 + (i % 5) * 30)) % (H + 40)) - 20;
+      ctx.fillStyle = colors[i % colors.length];
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(time * 3 + i);
+      ctx.fillRect(-5, -3, 10, 6);
+      ctx.restore();
+    }
+    panel(26, 26, 488, 760);
+    text("¡LO HICIMOS!", W / 2, 76, 42, "#2b8a3e", "center", "bold", "#fff3bf");
+    text("Llegaste al Templo de la Ensalada Legendaria", W / 2, 116, 17, "#4b2a7a");
+    // Doras bailando
+    if (doraReady) {
+      const h = 150;
+      const w = h * (354 / 490) * (1 + g.barriga / 180);
+      ctx.save();
+      ctx.translate(W / 2 - 110, 210 + Math.abs(Math.sin(time * 6)) * -14);
+      ctx.rotate(Math.sin(time * 6) * 0.12);
+      ctx.drawImage(doraImg, -w / 2, -h / 2, w, h);
+      ctx.restore();
+    }
+    // La "Ensalada Legendaria"
+    if (el > 0.8) {
+      drawEmoji("🏛️", W / 2 + 110, 214, 90);
+      drawEmoji("🍔", W / 2 + 110, 196 + Math.sin(time * 3) * 4, 46);
+      drawEmoji("🥬", W / 2 + 122, 176 + Math.sin(time * 3) * 4, 26);
+    }
+    let y = 300;
+    if (el > 0.8) {
+      y += wrappedText("La Ensalada Legendaria era… un combo agrandado con una hoja de lechuga encima.",
+        W / 2, y, 430, 17, "#c92a2a", 21);
+      y += 4;
+      y += wrappedText("El Guardián del Templo (una lechuga con lentes) te entrega:", W / 2, y, 430, 15, "#5c5470", 19, "normal");
+    } else {
+      y += 63;
+    }
+    y += 8;
+    state.prizes.forEach((prize, i) => {
+      if (el < 1.8 + i * 0.9) return;
+      ctx.font = "bold 16px 'Trebuchet MS',sans-serif";
+      const lines = wrap(prize, 380);
+      const h = lines.length * 20 + 14;
+      rr(50, y, 440, h, 12);
+      ctx.fillStyle = "#fff3bf";
+      ctx.fill();
+      ctx.strokeStyle = "#f59f00";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      drawEmoji(["🏆", "🎖️", "🎁"][i], 76, y + h / 2, 26);
+      lines.forEach((l, j) => text(l, 100, y + 17 + j * 20, 16, "#5b2a00", "left"));
+      y += h + 8;
+    });
+    if (el > 4.5) {
+      y = Math.max(y, 600) + 6;
+      text("Título oficial: " + state.rank, W / 2, y, 17, "#7048a8");
+      text("Puntaje: " + g.score, W / 2, y + 34, 30, "#5b2a00");
+      text("(incluye +" + VICTORY_BONUS + " puntos de vida saludable, no canjeables)", W / 2, y + 62, 13, "#5c5470", "center", "normal");
+      if (state.newRecord) text("¡NUEVO RÉCORD!", W / 2, y + 86, 18, "#2b8a3e");
+      text(state.closer, W / 2, 768, 14, "#4b2a7a", "center", "normal");
+      drawButton(buttons.vicEndless, true, 21);
+      drawButton(buttons.vicMenu, false, 20);
+    }
+  }
+
   // ---------- Render principal ----------
   let menuScroll = 0;
   function render(time) {
@@ -1353,11 +1709,14 @@
     for (const it of items) drawItem(it, time);
     for (const o of sortedObs) drawObstacle(o, time);
     drawTruck(time);
+    drawTemple(time);
+    drawBoss(time);
     drawPlayer(time);
     drawParticles();
     drawHud(time);
     if (state.screen === "paused") drawPause();
     if (state.screen === "gameover") drawGameOver(time);
+    if (state.screen === "victory") drawVictory(time);
   }
 
   let last = performance.now();
@@ -1370,6 +1729,8 @@
     render(time);
     requestAnimationFrame(frame);
   }
+
+  const victoryRevealed = () => performance.now() / 1000 - (state.victoryStart || 0) > 4.5;
 
   // ---------- Entrada ----------
   function toLogical(e) {
@@ -1422,6 +1783,11 @@
         if (inBtn(buttons.retry, x, y)) startGame();
         else if (inBtn(buttons.overMenu, x, y)) state.screen = "menu";
         break;
+      case "victory":
+        if (!victoryRevealed()) break;
+        if (inBtn(buttons.vicEndless, x, y)) continueEndless();
+        else if (inBtn(buttons.vicMenu, x, y)) state.screen = "menu";
+        break;
     }
   });
   canvas.addEventListener("pointercancel", () => { down = null; });
@@ -1437,6 +1803,8 @@
       else if (k === "p" || k === "P" || k === "Escape") pause();
     } else if (state.screen === "paused") {
       if (k === "p" || k === "P" || k === "Escape" || k === "Enter") state.screen = "playing";
+    } else if (state.screen === "victory") {
+      if ((k === "Enter" || k === " ") && victoryRevealed()) continueEndless();
     } else if (k === "Enter" || k === " ") {
       startGame();
     } else if (k === "m" || k === "M") {
@@ -1448,7 +1816,7 @@
   window.addEventListener("resize", resize);
 
   // Hook para pruebas automáticas (no afecta el juego).
-  window.__doras = { state, get g() { return g; }, player, startGame, jump, moveLeft, moveRight };
+  window.__doras = { state, get g() { return g; }, player, startGame, jump, moveLeft, moveRight, continueEndless };
 
   resize();
   resetGame();

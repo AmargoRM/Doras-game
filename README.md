@@ -31,6 +31,15 @@ Doras y Botas recorren la selva esquivando la comida más engordadora. Cada golp
 - **Modo Fit**: aparece comida "saludable" engañosa (barras con azúcar, batidos detox, influencers) y llueven manzanas con puntos dobles (reemplaza al "Geoparque").
 - **Estampida del food truck**: avisa el carril y baja a toda velocidad (reemplaza la "estampida de Daniela").
 
+## Final
+
+La ruta del Mapa tiene 6 tramos (unos 2 minutos y medio). Al terminar aparece el jefe final,
+**el Rey Combo Agrandado**, que lanza comida durante 24 segundos avisando el carril. Si lo aguantás,
+"se empacha de sí mismo" y llegás al **Templo de la Ensalada Legendaria**… que resulta ser un combo
+agrandado con una hoja de lechuga encima. Ahí recibís 3 premios ridículos al azar (por ejemplo,
+"membresía VIP de un gimnasio que cierra mañana"), un título según cómo llegó tu Barriga-metro y
++5000 "puntos de vida saludable, no canjeables". Después podés seguir en modo infinito.
+
 ## Archivos
 
 - `index.html` — página.
