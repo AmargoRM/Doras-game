@@ -6,6 +6,17 @@ tres carriles, obstáculos que bajan, saltos, power-ups y eventos especiales.
 Doras y Botas recorren la selva esquivando la comida más engordadora. Cada golpe llena el
 **Barriga-metro**; al 100 % se acaba la partida (y el personaje se ve cada vez más ancho).
 
+## 3D
+
+El juego se dibuja en 3D con [Three.js](https://threejs.org) (incluido en `public/vendor/`, licencia MIT):
+cámara detrás de Doras, Botas corriendo al lado mirando a cámara, comida modelada en 3D, selva con
+carteles satíricos, el Rey Combo gigante y el Templo de la Ensalada. Si el dispositivo no soporta 3D,
+el juego vuelve solo al modo 2D clásico. También se puede forzar el modo 2D agregando `?modo=2d`
+al final de la dirección.
+
+Nuevo movimiento: **rodar** (deslizar hacia abajo, flecha ↓, tecla S o botón "⤓ Rodar"). Sirve para pasar
+por debajo de los **carteles «2x1 en combos»**, que aparecen desde el nivel 2 y no se pueden saltar.
+
 ## Cómo jugarlo
 
 - El juego se publica en Cloudflare (ver "Publicar con Top 3 compartido"). Queda en
@@ -72,7 +83,10 @@ agrandado con una hoja de lechuga encima. Ahí recibís 3 premios ridículos al 
 ## Archivos
 
 - `public/index.html` — página.
-- `public/game.js` — todo el juego.
+- `public/game.js` — lógica del juego, pantallas y modo 2D.
+- `public/render3d.js` — dibujo en 3D (personajes, comida, escenario, jefe y templo).
+- `public/vendor/three.min.js` — librería Three.js.
+- `public/assets/face_dora.png`, `face_botas.png` — caras para los personajes 3D.
 - `public/assets/doras.webp` (y `doras.png`) — personaje sin fondo.
 - `worker/index.js` — servidor: entrega el juego y guarda/lee los puntajes.
 - `wrangler.toml` — configuración de Cloudflare.

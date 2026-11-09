@@ -12,6 +12,15 @@
   const PATH_RIGHT = 478;
   const ENT = 96; // tamaño base de colisión
   const PLAYER_Y = H * 0.77;
+  // Modo 3D (Three.js). Se puede forzar el modo clásico con ?modo=2d en la dirección.
+  const canvas3d = document.getElementById("game3d");
+  const USE_3D = !!(canvas3d && window.Doras3D && new URLSearchParams(location.search).get("modo") !== "2d" &&
+    window.Doras3D.init(canvas3d, PLAYER_Y));
+  if (USE_3D) document.body.classList.add("has3d");
+  else if (canvas3d) canvas3d.style.display = "none";
+  // En 3D la comida aparece mucho más lejos (en el horizonte) y viaja hacia el jugador.
+  const SPAWN_Y = USE_3D ? PLAYER_Y - 3000 : -ENT * 1.4;
+  const ROLL_TIME = 0.65;
   const PLAYER_DRAW_H = 190;
   const BASE_SPEED = 330;
   const LEVEL_DURATION = 22;
@@ -19,7 +28,7 @@
   const ROUTE_TIME = ROUTE_LEVELS * LEVEL_DURATION;
   const ROUTE_MAX_DIFFICULTY = 2.35; // tope de velocidad para que el final sea alcanzable
   const BOSS_DURATION = 24;
-  const BOSS_Y = 345;
+  const BOSS_Y = USE_3D ? PLAYER_Y - 1400 : 345;
   const ENDING_DURATION = 4;
   const VICTORY_BONUS = 5000;
   const BASE_OBSTACLE_INTERVAL = 1.05 * 0.65;
@@ -277,6 +286,9 @@
     vending:  { emoji: null, name: "Máquina de snacks", kcal: 26, jump: false,
                 hit: "La máquina se tragó tu moneda y vos sus galletas.",
                 defeat: "La máquina de snacks te atrapó con un «solo uno más»." },
+    sign2x1:  { emoji: "🪧", name: "Cartel «2x1 en combos»", kcal: 20, jump: false, overhead: true,
+                hit: "Te comiste el cartel del 2x1. Y los dos combos.",
+                defeat: "El 2x1 te cobró doble: en kilos." },
     // Comida «fit» engañosa (Modo Fit)
     proteinbar: { emoji: "🍫", tag: "FIT", trap: true, name: "Barra «saludable»", kcal: 12, jump: true,
                 hit: "40 g de azúcar y una foto de una hoja.",
@@ -329,6 +341,11 @@
     canvas.style.height = cssH + "px";
     canvas.width = Math.floor(cssW * dpr);
     canvas.height = Math.floor(cssH * dpr);
+    if (USE_3D) {
+      canvas3d.style.width = cssW + "px";
+      canvas3d.style.height = cssH + "px";
+      window.Doras3D.resize(cssW, cssH, dpr);
+    }
     emojiCache.clear();
   }
 
@@ -471,7 +488,7 @@
 
   const player = {
     lane: 1, x: LANE_X[1], targetX: LANE_X[1],
-    jumping: false, jumpV: 0, jumpH: 0, landing: 0,
+    jumping: false, jumpV: 0, jumpH: 0, landing: 0, rollTime: 0, slam: false,
     anim: 0, invul: 0, squash: 0,
     shield: false, waterTime: 0, tenisTime: 0
   };
@@ -488,7 +505,7 @@
     particles = [];
     Object.assign(player, {
       lane: 1, x: LANE_X[1], targetX: LANE_X[1],
-      jumping: false, jumpV: 0, jumpH: 0, landing: 0,
+      jumping: false, jumpV: 0, jumpH: 0, landing: 0, rollTime: 0, slam: false,
       anim: 0, invul: 0, squash: 0,
       shield: false, waterTime: 0, tenisTime: 0
     });
@@ -533,6 +550,10 @@
     audio.ensure();
     if (audio.ctx && audio.ctx.state === "suspended") audio.ctx.resume();
     resetGame();
+    if (USE_3D) {
+      for (let y = PLAYER_Y - 1100; y > SPAWN_Y; y -= 320) spawnObstacle(y);
+      spawnItem(PLAYER_Y - 1450);
+    }
     state.screen = "playing";
     state.newRecord = false;
     audio.tempo = 1;
@@ -554,17 +575,33 @@
     player.jumpH = ENT * 0.1;
     audio.jump();
   }
+  // Rodar: pasa por debajo de los carteles. En el aire, baja de golpe y rueda al tocar el piso.
+  function roll() {
+    if (player.rollTime > 0) return;
+    if (player.jumping) {
+      player.slam = true;
+      player.jumpV = Math.min(player.jumpV, -JUMP_VELOCITY * 1.2);
+      return;
+    }
+    player.rollTime = ROLL_TIME;
+    audio.tone(220, 0.18, "triangle", 0.06, 0, -80);
+  }
   function updatePlayer(dt) {
     player.anim += dt;
+    player.rollTime = Math.max(0, player.rollTime - dt);
     if (player.jumping) {
       player.jumpH += player.jumpV * dt;
-      player.jumpV -= JUMP_GRAVITY * dt;
+      player.jumpV -= JUMP_GRAVITY * dt * (player.slam ? 3 : 1);
       if (player.jumpH <= 0 && player.jumpV < 0) {
         player.jumpH = 0;
         player.jumpV = 0;
         player.jumping = false;
         player.landing = LANDING_GRACE;
         player.squash = 0.18;
+        if (player.slam) {
+          player.slam = false;
+          player.rollTime = ROLL_TIME;
+        }
       }
     } else {
       player.landing = Math.max(0, player.landing - dt);
@@ -607,14 +644,16 @@
     return shuffled([0, 1, 2]).find((l) => spawnClear(l, y, ENT * 5.2)) ?? null;
   }
 
-  function spawnObstacle() {
+  function spawnObstacle(yOverride) {
     let pool = g.fit ? FIT_POOL : g.party ? PARTY_POOL : NORMAL_POOL;
     // Desde el nivel 3 la comida «fit» engañosa aparece también en el camino normal.
     if (!g.fit && !g.party && g.level >= 3 && Math.random() < 0.18) pool = TRAP_POOL;
-    const y = -ENT * 1.4;
+    const y = yOverride ?? SPAWN_Y;
     const lane = fairObstacleLane(y);
     if (lane === null) return;
-    obstacles.push({ type: pick(pool), lane, y, seed: Math.random() * 10, cleared: false });
+    // Desde el nivel 2 aparecen carteles «2x1» que solo se pasan rodando por debajo.
+    const type = !g.fit && !g.party && g.level >= 2 && Math.random() < 0.12 ? "sign2x1" : pick(pool);
+    obstacles.push({ type, lane, y, seed: Math.random() * 10, cleared: false });
     // Filas dobles: dos carriles ocupados, siempre queda uno libre.
     const doubleChance = g.level < 2 ? 0 : Math.min(0.5, 0.16 + (g.level - 2) * 0.06 + g.rebound * 0.03);
     if (Math.random() < doubleChance) {
@@ -632,7 +671,7 @@
     g.foxTimer -= dt;
     if (g.foxTimer <= 0) {
       g.foxTimer = rand(11, 17);
-      const y = -ENT * 1.4;
+      const y = SPAWN_Y;
       const lane = fairObstacleLane(y);
       if (lane !== null) {
         obstacles.push({ type: "fox", lane, x: LANE_X[lane], y, seed: Math.random() * 10, cleared: false, think: 0.5 });
@@ -643,7 +682,7 @@
     for (const o of obstacles) {
       if (o.type !== "fox") continue;
       o.think -= dt;
-      if (o.think <= 0 && o.y > 80 && o.y < PLAYER_Y - 230) {
+      if (o.think <= 0 && o.y > SPAWN_Y + 214 && o.y < PLAYER_Y - 230) {
         o.think = 0.6;
         if (o.lane !== player.lane) o.lane += Math.sign(player.lane - o.lane);
       }
@@ -652,7 +691,7 @@
     }
   }
 
-  function spawnItem() {
+  function spawnItem(yOverride) {
     const r = Math.random();
     let type;
     if (g.fit) type = r < 0.7 ? "apple" : r < 0.85 ? "water" : "salad";
@@ -662,7 +701,7 @@
     else if (r < 0.70) type = "broccoli";
     else if (r < 0.75) type = "salad";
     else return;
-    const y = -ENT * 2.2;
+    const y = yOverride ?? SPAWN_Y - ENT * 0.8;
     const lane = fairItemLane(y);
     if (lane === null) return;
     items.push({ type, lane, y, seed: Math.random() * 10 });
@@ -674,6 +713,7 @@
   function banner(t, color) { g.bannerMsg = t; g.bannerTimer = 1.6; g.bannerColor = color; }
 
   function burst(x, y, color, n = 12) {
+    if (USE_3D) window.Doras3D.burst(x, y, color, n);
     for (let i = 0; i < n; i++) {
       const a = Math.random() * Math.PI * 2;
       const s = rand(90, 260);
@@ -703,6 +743,11 @@
       if (o.cleared) continue;
       if (!overlap(pb, obstacleBounds(o))) continue;
       const def = OBST[o.type];
+      if (def.overhead && player.rollTime > 0) {
+        o.cleared = true;
+        g.bonus += 30;
+        continue;
+      }
       if (def.jump && player.jumpH >= JUMP_CLEARANCE) {
         o.cleared = true;
         g.bonus += 20;
@@ -887,7 +932,7 @@
         t.warn -= dt;
         if (t.warn <= 0) {
           t.charging = true;
-          t.y = -ENT * 1.5;
+          t.y = SPAWN_Y - ENT * 0.1;
         }
       } else {
         t.y += t.speed * dt;
@@ -920,11 +965,11 @@
     }
     t.next -= dt;
     if (t.next > 0 || g.time < TRUCK_INITIAL_DELAY) return;
-    if (eventBusy() || obstacles.length >= 5) { t.next = 3; return; }
+    if (eventBusy() || obstacles.filter((o) => o.y > PLAYER_Y - 1000).length >= 5) { t.next = 3; return; }
     if (Math.random() > 0.55) { t.next = rand(20, 35); return; }
-    const lane = shuffled([0, 1, 2]).find((l) => !obstacles.some((o) => o.lane === l && o.y < ENT * 4)) ?? null;
+    const lane = shuffled([0, 1, 2]).find((l) => !obstacles.some((o) => o.lane === l && o.y < SPAWN_Y + ENT * 5.4)) ?? null;
     if (lane === null) { t.next = 3; return; }
-    Object.assign(t, { active: true, charging: false, lane, y: -ENT * 1.5, warn: TRUCK_WARNING, hit: false,
+    Object.assign(t, { active: true, charging: false, lane, y: SPAWN_Y - ENT * 0.1, warn: TRUCK_WARNING, hit: false,
       speed: Math.min(effSpeed * 2.2, 1000) });
     phrase(pick(truckPhrases), TRUCK_WARNING + 1.5);
     audio.warn();
@@ -1205,9 +1250,10 @@
     overMenu: { x: 170, y: 826, w: 200, h: 58, label: "Menú" },
     vicEndless: { x: 80, y: 800, w: 380, h: 66, label: "Seguir corriendo (modo infinito)" },
     vicMenu: { x: 170, y: 878, w: 200, h: 54, label: "Menú" },
-    left: { x: 16, y: 872, w: 150, h: 74, label: "◀" },
-    jumpB: { x: 195, y: 872, w: 150, h: 74, label: "⤒ Saltar" },
-    right: { x: 374, y: 872, w: 150, h: 74, label: "▶" }
+    left: { x: 16, y: 872, w: 116, h: 74, label: "◀" },
+    rollB: { x: 142, y: 872, w: 120, h: 74, label: "⤓ Rodar" },
+    jumpB: { x: 278, y: 872, w: 120, h: 74, label: "⤒ Saltar" },
+    right: { x: 408, y: 872, w: 116, h: 74, label: "▶" }
   };
   const inBtn = (b, x, y) => x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
 
@@ -1509,7 +1555,7 @@
     const wide = 1 + (g.barriga / MAX_BARRIGA) * 0.55;
     const squash = player.squash > 0 ? Math.sin((player.squash / 0.3) * Math.PI) * 0.12 : 0;
     const air = 1 + Math.min(0.12, jumpH / 1600);
-    const h = PLAYER_DRAW_H * air * (1 - squash);
+    const h = PLAYER_DRAW_H * air * (1 - squash) * (player.rollTime > 0 ? 0.6 : 1);
     const w = (PLAYER_DRAW_H * (354 / 490)) * air * wide * (1 + squash);
     const tilt = (player.targetX - player.x) / 400;
 
@@ -1638,14 +1684,14 @@
     drawRouteBar();
 
     // Controles táctiles
-    for (const b of [buttons.left, buttons.jumpB, buttons.right]) {
+    for (const b of [buttons.left, buttons.rollB, buttons.jumpB, buttons.right]) {
       rr(b.x, b.y, b.w, b.h, 22);
       ctx.fillStyle = "rgba(25,20,40,.38)";
       ctx.fill();
       ctx.strokeStyle = "rgba(255,255,255,.35)";
       ctx.lineWidth = 2;
       ctx.stroke();
-      text(b.label, b.x + b.w / 2, b.y + b.h / 2 + 1, b === buttons.jumpB ? 24 : 32, "rgba(255,255,255,.9)");
+      text(b.label, b.x + b.w / 2, b.y + b.h / 2 + 1, b === buttons.jumpB || b === buttons.rollB ? 21 : 32, "rgba(255,255,255,.9)");
     }
 
     if (g.flash > 0) {
@@ -1769,8 +1815,8 @@
     panel(36, 50, 468, 780);
     text("Cómo jugar", W / 2, 96, 34, "#4b2a7a");
     const rows = [
-      ["⬅️➡️", "Deslizá o usá ◀ ▶ / flechas para cambiar de carril."],
-      ["⬆️", "Tocá la pantalla, deslizá arriba o Espacio para saltar."],
+      ["⬅️➡️", "Deslizá a los lados para cambiar de carril, arriba para saltar y abajo para rodar."],
+      ["🪧", "Carteles «2x1»: no se saltan, pasá rodando por debajo (▼ / ⤓ Rodar)."],
       ["🍔", "La chatarra llena el Barriga-metro (y sube sola desde el nivel 2). Al 100% perdés."],
       ["🍱", "Lo rojo (buffet, combo, máquina) no se salta: esquivalo."],
       ["🧋", "Lo verde «FIT» es trampa: casi no engorda, pero activa el Efecto Rebote: todo más rápido y más puntos."],
@@ -1913,22 +1959,33 @@
   function render(time) {
     ctx.setTransform(scale * dpr, 0, 0, scale * dpr, 0, 0);
     ctx.clearRect(0, 0, W, H);
-    if (state.screen === "menu" || state.screen === "howto") {
-      scroll = menuScroll;
-      drawWorld(time);
+    const inMenu = state.screen === "menu" || state.screen === "howto";
+    if (inMenu) scroll = menuScroll;
+    if (USE_3D) {
+      window.Doras3D.render({
+        state, g, player, obstacles, items, time, scroll,
+        laneX: LANE_X, defs: OBST, itemDefs: ITEMS,
+        menu: inMenu, frozen: state.screen === "paused" || state.screen === "gameover" || state.screen === "victory",
+        bossY: BOSS_Y, endingDuration: ENDING_DURATION
+      });
+    }
+    if (inMenu) {
+      if (!USE_3D) drawWorld(time);
       if (state.screen === "menu") drawMenu(time);
       else drawHowTo();
       return;
     }
-    drawWorld(time);
-    const sortedObs = obstacles.slice().sort((a, b) => a.y - b.y);
-    for (const it of items) drawItem(it, time);
-    for (const o of sortedObs) drawObstacle(o, time);
-    drawTruck(time);
-    drawTemple(time);
-    drawBoss(time);
-    drawPlayer(time);
-    drawParticles();
+    if (!USE_3D) {
+      drawWorld(time);
+      const sortedObs = obstacles.slice().sort((a, b) => a.y - b.y);
+      for (const it of items) drawItem(it, time);
+      for (const o of sortedObs) drawObstacle(o, time);
+      drawTruck(time);
+      drawTemple(time);
+      drawBoss(time);
+      drawPlayer(time);
+      drawParticles();
+    }
     drawHud(time);
     if (state.screen === "paused") drawPause();
     if (state.screen === "gameover") drawGameOver(time);
@@ -2074,6 +2131,7 @@
       else if (inBtn(buttons.left, x, y)) { moveLeft(); down = null; }
       else if (inBtn(buttons.right, x, y)) { moveRight(); down = null; }
       else if (inBtn(buttons.jumpB, x, y)) { jump(); down = null; }
+      else if (inBtn(buttons.rollB, x, y)) { roll(); down = null; }
     }
   });
   canvas.addEventListener("pointerup", (e) => {
@@ -2096,6 +2154,7 @@
         break;
       case "playing":
         if (Math.abs(dx) >= SWIPE && Math.abs(dx) > Math.abs(dy)) { if (dx < 0) moveLeft(); else moveRight(); }
+        else if (dy >= SWIPE) roll();
         else jump(); // toque o deslizar hacia arriba
         break;
       case "paused":
@@ -2125,6 +2184,7 @@
       if (k === "ArrowLeft" || k === "a" || k === "A") moveLeft();
       else if (k === "ArrowRight" || k === "d" || k === "D") moveRight();
       else if (k === "ArrowUp" || k === " " || k === "w" || k === "W") jump();
+      else if (k === "ArrowDown" || k === "s" || k === "S") roll();
       else if (k === "p" || k === "P" || k === "Escape") pause();
     } else if (state.screen === "paused") {
       if (k === "p" || k === "P" || k === "Escape" || k === "Enter") state.screen = "playing";
@@ -2141,7 +2201,7 @@
   window.addEventListener("resize", resize);
 
   // Hook para pruebas automáticas (no afecta el juego).
-  window.__doras = { state, get g() { return g; }, player, startGame, jump, moveLeft, moveRight, continueEndless };
+  window.__doras = { state, get g() { return g; }, get obstacles() { return obstacles; }, player, startGame, jump, roll, moveLeft, moveRight, continueEndless, USE_3D };
 
   resize();
   resetGame();

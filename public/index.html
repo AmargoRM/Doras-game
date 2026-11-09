@@ -39,6 +39,10 @@
     box-shadow: 0 10px 40px rgba(0,0,0,.45);
     background: #2d8a4e;
   }
+  #stage { position: relative; }
+  #game3d { position: absolute; left: 0; top: 0; }
+  #game { position: relative; z-index: 1; }
+  body.has3d #game { background: transparent; box-shadow: none; }
   @media (max-width: 600px) {
     canvas { border-radius: 0; box-shadow: none; }
   }
@@ -92,7 +96,7 @@
 </style>
 </head>
 <body>
-<div id="wrap"><canvas id="game" aria-label="Doras Survivor"></canvas></div>
+<div id="wrap"><div id="stage"><canvas id="game3d" aria-hidden="true"></canvas><canvas id="game" aria-label="Doras Survivor"></canvas></div></div>
 <form id="scoreForm" autocomplete="off">
   <div class="row">
     <input id="nameInput" maxlength="16" placeholder="Tu nombre para el ranking" aria-label="Tu nombre" enterkeyhint="done">
@@ -101,6 +105,8 @@
   <div id="sugs"></div>
   <div id="saveErr"></div>
 </form>
+<script src="vendor/three.min.js"></script>
+<script src="render3d.js"></script>
 <script src="game.js"></script>
 </body>
 </html>
